@@ -7,17 +7,24 @@ library('mice') # imputation
 library('randomForest') # classification algorithm
 library('caret') #ml algorithm
 
-
+#Import
 data(GermanCredit)
 cs<-GermanCredit
 str(cs)
-nrow(cs)
+
+#Changing the labels for the factor Class
+cs<- cs %>% mutate(Class=factor(Class, labels=c(0,1)))
+
+
+#Creating training and test sets
 index<-sample(nrow(cs), floor(0.7*nrow(cs)))
 
-cs<- cs %>% mutate(Class=factor(Class, labels=c(0,1)))
 
 train_cs<-cs[index,-1]
 test_cs<-cs[-index,-1]
+
+
+#Checking for N/As
 
 if(sum(is.na(cs))!=0){
   na_count <-sapply(cs, function(y) sum(length(which(is.na(y)))))
@@ -27,28 +34,29 @@ if(sum(is.na(cs))!=0){
   cat("BYE!")
 }
 
-str(train_cs)
 
+# Build the model
 
-View(cs)
-# Build the model (note: not all possible variables are used)
+#Random Forest Model 
 rf_model <- train(factor(Class) ~ .,
                   data = train_cs, method="cforest", trControl=myControl)
 
-
+#Neural network Model 
 
 nn_model<-train(factor(Class) ~ .,data=train_cs,
                 method='nnet', trControl=myControl)
 
-
+#XGboost Model
+ 
 xgbmodel <-  train(factor(Class) ~ .,
                    data=train_cs, method="xgbTree" )
-
+#Gradient boosting Model
 gbm_model <- train(factor(Class) ~ .,
                    data = train_cs, method="gbm", trControl=myControl)
 
 
-# Predict using the train set
+# Predict on the train set
+
 prediction_RF_train<-predict(rf_model, train_cs, type='prob')
 pred_rf_train<-as.data.frame(prediction_RF_train)
 
@@ -64,7 +72,8 @@ pred_xgb_train<-as.data.frame(prediction_xgb_train)
 prediction_gbm_train<-predict(gbm_model, train_cs, type='prob')
 pred_gbm_train<-as.data.frame(prediction_gbm_train)
 
-# Predict using the test set
+# Predict on the test set
+
 prediction_RF_test<-predict(rf_model, test_cs, type='prob')
 pred_rf_test<-as.data.frame(prediction_RF_test)
 
@@ -79,6 +88,7 @@ pred_xgb_test<-as.data.frame(prediction_xgb_test)
 
 prediction_gbm_test<-predict(gbm_model, test_cs, type='prob')
 pred_gbm_test<-as.data.frame(prediction_gbm_test)
+
 #Build Ensemble Model
 
 train_ensemble<-cbind(train_cs, rf=pred_rf_train$`1`, 
@@ -108,12 +118,15 @@ imp<-function(x){
     coord_flip() + 
     theme_few()
 }
- importance(rf_ensemble)
-test_ensemble<-cbind(test_cs, rf = pred_rf_test$`1`, nn = pred_nn_test$`1`, xgb = pred_xgb_test$`1`
-                     )
 
-train_ensemble<-cbind(train_cs, rf = pred_rf_train$`1`, nn = pred_nn_train$`1`, xgb = pred_xgb_train$`1`
-                      )
+#Building datasets for ensemble predictions
+
+test_ensemble<-cbind(test_cs, rf = pred_rf_test$`1`, nn = pred_nn_test$`1`, xgb = pred_xgb_test$`1`)
+
+train_ensemble<-cbind(train_cs, rf = pred_rf_train$`1`, nn = pred_nn_train$`1`, xgb = pred_xgb_train$`1`)
+
+
+#Predict the ensemble model on training and test sets
 
 pred_ensemble<-predict(rf_ensemble, test_ensemble, type='prob')
 
@@ -123,38 +136,19 @@ pred_fin<-as.data.frame(pred_ensemble)
 
 pred_fin2<-as.data.frame(pred_ensemble2)
 
+#Final test set with preictions
+
 final<-cbind(test_ensemble, pred=pred_fin$`1`)
 
-pred_binary<-vector("numeric", nrow(final))
-View(cbind(final, pred_binary, flag))
-
-
-for(i in 1:nrow(final)){
-  if(final$pred[i]>=0.4){
-    pred_binary[i] <- 1
-  }else{
-    pred_binary[i] <- 0
-  }
-}
-  
-  
-  flag<-vector("numeric", nrow(final))
-  
-for(i in 1:nrow(final)){
-  if(final$Class[i]==pred_binary[i]){
-      flag[i] <- 1
-  }else{
-      flag[i] <- 0
-  }
-}
-
-auc(roc(test_cs$Class, test_cs$Class))
+#Final train set with preictions
 
 finagle<-cbind(train_ensemble, pred=pred_fin2$`1`)
 
+#Writing the test set results
 write.csv(final,"new_cs_ml_german.csv")
 
 final2<-rbind(final, finagle)
 
+#Writing results for the entire dataset
 write.csv(final2, "new_cs_ml_german_2.csv")
 
